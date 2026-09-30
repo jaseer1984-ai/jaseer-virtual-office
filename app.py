@@ -403,7 +403,7 @@ def chat():
     elif dept=='Reporting': steps=['Jaseer','Understand Request','Sales Agent','Reporting Agent','Build Dashboard','Jaseer Review']
     else: steps=['Jaseer','Understand Request',dept+' Agent','Analyse Data' if mode=='analyse' else ('Investigate Drivers' if mode=='investigate' else 'Prepare Advice'),'Jaseer Review']
     active=['Sales','Inventory','Finance','Audit','Suppliers'] if dept=='Overall' else [dept]
-    return jsonify(answer=ans,department=dept,mode=mode,steps=steps,active=active,llm=used,source=engine.source,download_url=('/api/dashboard/download' if dashboard_meta else None))
+    return jsonify(answer=ans,department=dept,mode=mode,steps=steps,active=active,llm=used,source=engine.source,download_url=('/api/dashboard/download' if dashboard_meta else None),dashboard_ready=bool(dashboard_meta and LATEST_DASHBOARD.exists()),dashboard_filename=('Jaseer_MTD_Performance_Dashboard.xlsx' if dashboard_meta else None))
 @app.post('/api/upload')
 def upload():
     incoming=request.files.getlist('files') or request.files.getlist('file')
@@ -444,6 +444,6 @@ def json_error(e):
 
 @app.get('/api/status')
 def status():
-    return jsonify(source=engine.source,llm_configured=bool(os.getenv('LLM_API_URL') and os.getenv('LLM_API_KEY') and os.getenv('LLM_MODEL')),gdrive_configured=bool(os.getenv('GDRIVE_FOLDER_ID')))
+    return jsonify(source=engine.source,llm_configured=bool(os.getenv('LLM_API_URL') and os.getenv('LLM_API_KEY') and os.getenv('LLM_MODEL')),gdrive_configured=bool(os.getenv('GDRIVE_FOLDER_ID')),dashboard_ready=LATEST_DASHBOARD.exists(),download_url=('/api/dashboard/download' if LATEST_DASHBOARD.exists() else None))
 
 if __name__=='__main__': app.run(host='0.0.0.0',port=int(os.getenv('PORT','5000')),debug=True)
