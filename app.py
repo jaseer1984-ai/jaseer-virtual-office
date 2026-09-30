@@ -111,15 +111,19 @@ def route(q):
 def deterministic_answer(q,dept,mode,f):
     s=q.lower(); r=f['sales']
     if dept=='Sales':
-        if ('highest' in s or 'best' in s) and r['branch']:
-            k=max(r['branch'],key=r['branch'].get); return f'Highest sales branch is {k}: SAR {r["branch"][k]:,.2f}.'
-        if 'branch' in s and r['branch']: return 'Sales by branch — '+', '.join(f'{k}: SAR {v:,.2f}' for k,v in r['branch'].items())
-        if mode in ('advise','investigate') and r['branch'] and r['monthly']:
-            best=max(r['branch'],key=r['branch'].get); worst=min(r['branch'],key=r['branch'].get); bm=max(r['monthly'],key=r['monthly'].get); wm=min(r['monthly'],key=r['monthly'].get)
-            return f'I analysed the loaded data. {best} is the strongest branch and {worst} is the weakest. {bm} is the strongest month and {wm} is the weakest. GP margin is {r["gp_pct"]:.1f}%. Compare product mix, customer count and average bill value in the weaker branch/period against the stronger one before changing targets or promotions.'
-        return f'Sales: SAR {r["total"]:,.2f} | COGS: SAR {r["cost"]:,.2f} | GP: SAR {r["gp"]:,.2f} ({r["gp_pct"]:.1f}%).'
+        if not isinstance(r, dict) or 'text' in r:
+            return (r.get('text','Sales data is not available.') if isinstance(r,dict) else 'Sales data is not available.')
+        branch=r.get('branch') or {}; monthly=r.get('monthly') or {}
+        total=float(r.get('total',0) or 0); cost=float(r.get('cost',0) or 0); gp=float(r.get('gp',total-cost) or 0); gp_pct=float(r.get('gp_pct',(gp/total*100 if total else 0)) or 0)
+        if ('highest' in s or 'best' in s) and branch:
+            k=max(branch,key=branch.get); return f'Highest sales branch is {k}: SAR {branch[k]:,.2f}.'
+        if 'branch' in s and branch: return 'Sales by branch — '+', '.join(f'{k}: SAR {v:,.2f}' for k,v in branch.items())
+        if mode in ('advise','investigate') and branch and monthly:
+            best=max(branch,key=branch.get); worst=min(branch,key=branch.get); bm=max(monthly,key=monthly.get); wm=min(monthly,key=monthly.get)
+            return f'I analysed the loaded data. {best} is the strongest branch and {worst} is the weakest. {bm} is the strongest month and {wm} is the weakest. GP margin is {gp_pct:.1f}%. Compare product mix, customer count and average bill value in the weaker branch/period against the stronger one before changing targets or promotions.'
+        return f'Sales: SAR {total:,.2f} | COGS: SAR {cost:,.2f} | GP: SAR {gp:,.2f} ({gp_pct:.1f}%).'
     if dept=='Inventory':
-        x=f['inventory']; ans=f'Inventory: {x["negative"]} negative-stock item(s), {x["slow"]} slow-moving item(s), stock value SAR {x["stock_value"]:,.2f}.'
+        x=f.get('inventory') or {}; ans=f'Inventory: {int(x.get("negative",0) or 0)} negative-stock item(s), {int(x.get("slow",0) or 0)} slow-moving item(s), stock value SAR {float(x.get("stock_value",0) or 0):,.2f}.'
         if 'negative' in s and x.get('negative_rows'): ans+=' First negative-stock record: '+json.dumps(x['negative_rows'][0],default=str)[:450]
         return ans
     if dept=='Finance': return f'Bank reconciliation: {f["finance"]["unmatched"]} unmatched transaction(s); net difference SAR {f["finance"]["difference"]:,.2f}.'
