@@ -31,3 +31,7 @@ The UI and backend are ready for a server-side Drive sync/cache layer, but crede
 
 ## Complete MTD Excel dashboard export
 After uploading the MTD workbooks, use **MTD Dashboard** in the left menu or ask **make MTD dashboard**. The server builds `Jaseer_MTD_Performance_Dashboard.xlsx` with KPI cards, management insights, forecast & pace, daily sales trend, branch target vs achieved, current-vs-previous period, branch heatmap, NOB achievement, Sales Detail, Branch Summary, and Monthly Summary. A download button appears in chat.
+
+
+## Download delivery fix
+The chat panel now reserves a dedicated persistent row for the generated Excel download. After a successful dashboard build, the green download button remains visible above the message box and downloads from `/api/dashboard/download`.
