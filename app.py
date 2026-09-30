@@ -46,7 +46,68 @@ class DataEngine:
         return None
     @staticmethod
     def num(s): return pd.to_numeric(s,errors='coerce').fillna(0)
+    @staticmethod
+    def _find_col(df, *aliases):
+        norm={re.sub(r'[^a-z0-9]+','',str(c).lower()):c for c in df.columns}
+        for a in aliases:
+            k=re.sub(r'[^a-z0-9]+','',a.lower())
+            if k in norm: return norm[k]
+        return None
+
+    def mtd_sales(self):
+        """Read the user's real MTD workbooks (numeric branch sheets such as 102/104/107/111)."""
+        frames=[]
+        for sheet, raw in self.sheets.items():
+            branch=str(sheet).strip()
+            if not re.fullmatch(r'\d{2,6}', branch):
+                continue
+            df=raw.copy()
+            date=self._find_col(df,'Date')
+            target=self._find_col(df,'Sales Target')
+            achieved=self._find_col(df,'Sales Achivement','Sales Achievement','Sales Achieved')
+            nob_target=self._find_col(df,'NOB Target')
+            nob_ach=self._find_col(df,'NOB Achievemnet','NOB Achievement','NOB Achieved')
+            abv_target=self._find_col(df,'ABV Target')
+            gp_target=self._find_col(df,'GP Target')
+            gp_ach=self._find_col(df,'GP Acheivment','GP Achievement')
+            if not (date and target and achieved):
+                continue
+            x=pd.DataFrame({'Date':pd.to_datetime(df[date],errors='coerce'),
+                            'Sales Target':self.num(df[target]),
+                            'Sales':self.num(df[achieved])})
+            x['Branch']=branch
+            x['NOB Target']=self.num(df[nob_target]) if nob_target else 0
+            x['NOB']=self.num(df[nob_ach]) if nob_ach else 0
+            x['ABV Target']=self.num(df[abv_target]) if abv_target else 0
+            x['GP Target']=self.num(df[gp_target]) if gp_target else 0
+            x['GP %']=self.num(df[gp_ach]) if gp_ach else 0
+            x=x.dropna(subset=['Date'])
+            # Ignore blank/template rows that contain no sales/target/NOB values.
+            x=x[(x['Sales Target']!=0)|(x['Sales']!=0)|(x['NOB']!=0)]
+            if not x.empty: frames.append(x)
+        if not frames: return None
+        allm=pd.concat(frames,ignore_index=True)
+        total=float(allm['Sales'].sum()); target=float(allm['Sales Target'].sum())
+        nob=float(allm['NOB'].sum()); nob_target=float(allm['NOB Target'].sum())
+        branch=allm.groupby('Branch')['Sales'].sum().sort_values(ascending=False).round(2).to_dict()
+        branch_target=allm.groupby('Branch')['Sales Target'].sum().round(2).to_dict()
+        branch_kpi={}
+        for b,v in branch.items():
+            bt=float(branch_target.get(b,0) or 0); sub=allm[allm.Branch==b]; bn=float(sub['NOB'].sum())
+            branch_kpi[b]={'sales':float(v),'target':bt,'achievement_pct':float(v)/bt*100 if bt else 0,'nob':bn,'abv':float(v)/bn if bn else 0}
+        allm['Month']=allm['Date'].dt.to_period('M').astype(str)
+        monthly=allm.groupby('Month')['Sales'].sum().round(2).to_dict()
+        monthly_target=allm.groupby('Month')['Sales Target'].sum().round(2).to_dict()
+        return {'kind':'mtd','total':total,'target':target,'achievement_pct':total/target*100 if target else 0,
+                'nob':nob,'nob_target':nob_target,'nob_achievement_pct':nob/nob_target*100 if nob_target else 0,
+                'abv':total/nob if nob else 0,'branch':branch,'branch_kpi':branch_kpi,
+                'monthly':monthly,'monthly_target':monthly_target,'rows':len(allm),
+                'date_from':allm.Date.min().strftime('%Y-%m-%d'),'date_to':allm.Date.max().strftime('%Y-%m-%d')}
+
     def sales(self):
+        # First recognize the real MTD dashboard format.
+        mtd=self.mtd_sales()
+        if mtd is not None: return mtd
         df=self.sheet('Sales')
         if df is None:return {'text':'Sales data is not loaded.'}
         for c in ['Sales','Cost','Gross Profit','Qty']:
@@ -59,7 +120,7 @@ class DataEngine:
         monthly={}
         if {'Date','Sales'}<=set(df.columns):
             monthly=df.dropna(subset=['Date']).assign(Month=lambda x:x.Date.dt.to_period('M').astype(str)).groupby('Month')['Sales'].sum().round(2).to_dict()
-        return {'total':total,'cost':cost,'gp':gp,'gp_pct':gp/total*100 if total else 0,'branch':branch,'monthly':monthly,'rows':len(df)}
+        return {'kind':'detail','total':total,'cost':cost,'gp':gp,'gp_pct':gp/total*100 if total else 0,'branch':branch,'monthly':monthly,'rows':len(df)}
     def inventory(self):
         df=self.sheet('Inventory')
         if df is None:return {'text':'Inventory data is not loaded.','negative':0,'slow':0}
@@ -114,13 +175,35 @@ def deterministic_answer(q,dept,mode,f):
         if not isinstance(r, dict) or 'text' in r:
             return (r.get('text','Sales data is not available.') if isinstance(r,dict) else 'Sales data is not available.')
         branch=r.get('branch') or {}; monthly=r.get('monthly') or {}
-        total=float(r.get('total',0) or 0); cost=float(r.get('cost',0) or 0); gp=float(r.get('gp',total-cost) or 0); gp_pct=float(r.get('gp_pct',(gp/total*100 if total else 0)) or 0)
+        total=float(r.get('total',0) or 0)
+        if r.get('kind')=='mtd':
+            target=float(r.get('target',0) or 0); ach=float(r.get('achievement_pct',0) or 0); nob=float(r.get('nob',0) or 0); abv=float(r.get('abv',0) or 0)
+            bk=r.get('branch_kpi') or {}
+            # Direct branch request, e.g. branch 107 / 107 sales.
+            m=re.search(r'(?<!\d)(\d{3,6})(?!\d)',s)
+            if m and m.group(1) in bk:
+                b=m.group(1); z=bk[b]
+                return f'Branch {b}: Sales SAR {z["sales"]:,.2f} | Target SAR {z["target"]:,.2f} | Achievement {z["achievement_pct"]:.1f}% | NOB {z["nob"]:,.0f} | ABV SAR {z["abv"]:,.2f}.'
+            if ('highest' in s or 'best' in s) and branch:
+                k=max(branch,key=branch.get); z=bk.get(k,{})
+                return f'Highest sales branch is {k}: SAR {branch[k]:,.2f} (target SAR {float(z.get("target",0)):,.2f}, achievement {float(z.get("achievement_pct",0)):.1f}%).'
+            if ('lowest' in s or 'worst' in s) and branch:
+                k=min(branch,key=branch.get); z=bk.get(k,{})
+                return f'Lowest sales branch is {k}: SAR {branch[k]:,.2f} (target SAR {float(z.get("target",0)):,.2f}, achievement {float(z.get("achievement_pct",0)):.1f}%).'
+            if 'branch' in s and branch:
+                return 'Sales by branch — '+', '.join(f'{k}: SAR {v:,.2f} ({float(bk.get(k,{}).get("achievement_pct",0)):.1f}%)' for k,v in branch.items())
+            if 'month' in s and monthly:
+                return 'Sales by month — '+', '.join(f'{k}: SAR {v:,.2f}' for k,v in monthly.items())
+            if 'nob' in s or 'bill' in s: return f'NOB: {nob:,.0f} | Target: {float(r.get("nob_target",0)):,.0f} | Achievement: {float(r.get("nob_achievement_pct",0)):.1f}%.'
+            if 'abv' in s or 'average bill' in s: return f'Overall ABV is SAR {abv:,.2f}, calculated from verified sales and NOB.'
+            if mode in ('advise','investigate') and branch and monthly:
+                best=max(branch,key=branch.get); worst=min(branch,key=branch.get); bm=max(monthly,key=monthly.get); wm=min(monthly,key=monthly.get)
+                return f'I analysed the MTD files from {r.get("date_from")} to {r.get("date_to")}. {best} has the highest sales and {worst} the lowest. {bm} is the strongest month and {wm} the weakest. Overall target achievement is {ach:.1f}% and ABV is SAR {abv:,.2f}. Review NOB and ABV gaps branch-by-branch before changing targets or promotions.'
+            return f'MTD Sales: SAR {total:,.2f} | Target: SAR {target:,.2f} | Achievement: {ach:.1f}% | NOB: {nob:,.0f} | ABV: SAR {abv:,.2f} | Period: {r.get("date_from")} to {r.get("date_to")}.'
+        cost=float(r.get('cost',0) or 0); gp=float(r.get('gp',total-cost) or 0); gp_pct=float(r.get('gp_pct',(gp/total*100 if total else 0)) or 0)
         if ('highest' in s or 'best' in s) and branch:
             k=max(branch,key=branch.get); return f'Highest sales branch is {k}: SAR {branch[k]:,.2f}.'
         if 'branch' in s and branch: return 'Sales by branch — '+', '.join(f'{k}: SAR {v:,.2f}' for k,v in branch.items())
-        if mode in ('advise','investigate') and branch and monthly:
-            best=max(branch,key=branch.get); worst=min(branch,key=branch.get); bm=max(monthly,key=monthly.get); wm=min(monthly,key=monthly.get)
-            return f'I analysed the loaded data. {best} is the strongest branch and {worst} is the weakest. {bm} is the strongest month and {wm} is the weakest. GP margin is {gp_pct:.1f}%. Compare product mix, customer count and average bill value in the weaker branch/period against the stronger one before changing targets or promotions.'
         return f'Sales: SAR {total:,.2f} | COGS: SAR {cost:,.2f} | GP: SAR {gp:,.2f} ({gp_pct:.1f}%).'
     if dept=='Inventory':
         x=f.get('inventory') or {}; ans=f'Inventory: {int(x.get("negative",0) or 0)} negative-stock item(s), {int(x.get("slow",0) or 0)} slow-moving item(s), stock value SAR {float(x.get("stock_value",0) or 0):,.2f}.'
@@ -176,7 +259,7 @@ def upload():
             t=tempfile.NamedTemporaryFile(suffix=ext,delete=False); t.close(); f.save(t.name)
             saved.append((t.name,f.filename))
         sheets=engine.load_files(saved)
-        return jsonify(ok=True,source=engine.source,sheets=sheets,file_count=len(saved))
+        facts=engine.sales(); return jsonify(ok=True,source=engine.source,sheets=sheets,file_count=len(saved),data_type=facts.get('kind','unknown'),sales_rows=facts.get('rows',0),period=[facts.get('date_from'),facts.get('date_to')] if facts.get('kind')=='mtd' else None)
     except Exception as e:
         return jsonify(error=str(e)),400
     finally:
