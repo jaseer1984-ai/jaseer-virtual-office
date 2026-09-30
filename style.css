@@ -3,3 +3,25 @@
 .selectedFiles{margin:10px 0;padding:9px 11px;border:1px solid #29445f;border-radius:8px;max-height:90px;overflow:auto;font-size:12px;color:#9fc8ef;background:#091a2d}
 
 .download-btn{display:inline-block;margin:8px 14px 14px;padding:10px 16px;border-radius:9px;background:#16a085;color:#fff;text-decoration:none;font-weight:700}.download-btn:hover{filter:brightness(1.08)}
+
+.download-area{padding:0 10px 6px;background:#091624}.download-area[hidden]{display:none}.download-area .download-btn{display:block;margin:0;text-align:center;background:#16d77b;color:#04150d;font-weight:800;border:1px solid #4cf0a1}
+
+/* Restored interactive 3D/isometric office */
+.office.office3d{position:relative;overflow:hidden;min-height:330px;background:#07131f url('/static/office_3d.png?v=3dfinal1') center center/cover no-repeat;border-bottom:1px solid #143654}
+.office.office3d:before{display:none}
+.office3d .hotspot{position:absolute;background:transparent;border:2px solid transparent;border-radius:12px;box-shadow:none;padding:0;min-height:0;cursor:pointer;transition:.18s;overflow:visible;color:transparent}
+.office3d .hotspot:hover{transform:none;border-color:#1688ff;box-shadow:0 0 22px #1688ff88;background:#1688ff10}
+.office3d .hotspot span{display:none}
+.office3d .hotspot em{position:absolute;left:50%;right:auto;bottom:7px;transform:translateX(-50%);padding:4px 11px;border-radius:14px;background:#07111ed9;color:#d9e5f2;font-style:normal;font-size:11px;white-space:nowrap;border:1px solid #53677b}
+.office3d .hotspot.working{border-color:#1688ff;box-shadow:0 0 24px #1688ffaa;background:#1688ff12}
+.office3d .hotspot.working em{background:#0d4f85e8;color:#fff;border-color:#4ab0ff}
+.office3d .hotspot.done{border-color:#16d77b;box-shadow:0 0 18px #16d77b55;background:#16d77b0c}
+.office3d .hotspot.done em{background:#075a3ee8;color:#dffff0;border-color:#16d77b}
+.office3d .sales{left:8.5%;top:7%;width:28%;height:43%}
+.office3d .jaseer{left:36.5%;top:2%;width:27%;height:48%}
+.office3d .inventory{right:7.5%;top:7%;width:29%;height:43%}
+.office3d .finance{left:6%;bottom:4%;width:23%;height:43%}
+.office3d .audit{left:29%;bottom:4%;width:21%;height:43%}
+.office3d .suppliers{left:50%;bottom:4%;width:23%;height:43%}
+.office3d .reporting{right:5%;bottom:4%;width:22%;height:43%}
+@media(max-width:1000px){.office.office3d{background-size:cover}.office3d .hotspot em{font-size:9px;padding:3px 7px}}

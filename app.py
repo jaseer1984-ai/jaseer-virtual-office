@@ -431,7 +431,9 @@ def upload():
 def dashboard_download():
     if not LATEST_DASHBOARD.exists():
         return jsonify(error='No dashboard has been created yet.'),404
-    return send_file(LATEST_DASHBOARD,as_attachment=True,download_name='Jaseer_MTD_Performance_Dashboard.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp = send_file(LATEST_DASHBOARD,as_attachment=True,download_name='Jaseer_MTD_Performance_Dashboard.xlsx',mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',conditional=True)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
 
 @app.errorhandler(Exception)
 def json_error(e):
