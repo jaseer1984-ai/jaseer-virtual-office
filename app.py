@@ -7,7 +7,7 @@ from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.utils import get_column_letter
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import make_response, Flask, render_template, request, jsonify, send_file
 
 BASE=Path(__file__).resolve().parent
 app=Flask(__name__)
@@ -380,7 +380,12 @@ def llm_answer(q,dept,mode,f,fallback):
     except Exception: return fallback,False
 
 @app.get('/')
-def home(): return render_template('index.html',source=engine.source)
+def home():
+    resp = make_response(render_template('index.html', source=engine.source))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 @app.get('/health')
 def health(): return {'ok':True,'source':engine.source}
 @app.post('/api/chat')
