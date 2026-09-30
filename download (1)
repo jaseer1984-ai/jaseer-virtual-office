@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+cache/*
+!cache/.gitkeep
+uploads/*
+*.xls
+*.xlsx
+!data/Demo_Data.xlsx

@@ -28,3 +28,6 @@ Open http://127.0.0.1:5000
 
 ## Large Google Drive sales files
 The UI and backend are ready for a server-side Drive sync/cache layer, but credentials are intentionally not bundled. Large files should be downloaded/processed on the server and only compact results returned to the browser. The real Drive downloader from the existing MTD notebook should be connected using private Render secrets before production use.
+
+## Complete MTD Excel dashboard export
+After uploading the MTD workbooks, use **MTD Dashboard** in the left menu or ask **make MTD dashboard**. The server builds `Jaseer_MTD_Performance_Dashboard.xlsx` with KPI cards, management insights, forecast & pace, daily sales trend, branch target vs achieved, current-vs-previous period, branch heatmap, NOB achievement, Sales Detail, Branch Summary, and Monthly Summary. A download button appears in chat.
