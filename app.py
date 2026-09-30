@@ -6,7 +6,7 @@ from flask import Flask, render_template, request, jsonify
 
 BASE=Path(__file__).resolve().parent
 app=Flask(__name__)
-app.config['MAX_CONTENT_LENGTH']=80*1024*1024
+app.config['MAX_CONTENT_LENGTH']=250*1024*1024
 app.secret_key=os.getenv('SECRET_KEY','dev-only-change-me')
 
 class DataEngine:
@@ -15,13 +15,30 @@ class DataEngine:
     def load_demo(self):
         p=BASE/'data'/'Demo_Data.xlsx'
         if p.exists(): self.load_file(p, 'Demo supermarket data')
-    def load_file(self,path,label=None):
+    def read_file(self,path):
         ext=Path(path).suffix.lower()
         if ext in ('.xlsx','.xls'):
-            self.sheets=pd.read_excel(path,sheet_name=None)
-        elif ext=='.csv': self.sheets={'Sales':pd.read_csv(path)}
-        else: raise ValueError('Use XLSX, XLS or CSV')
+            return pd.read_excel(path,sheet_name=None)
+        if ext=='.csv':
+            return {'Sales':pd.read_csv(path)}
+        raise ValueError('Use XLSX, XLS or CSV')
+    def load_file(self,path,label=None):
+        self.sheets=self.read_file(path)
         self.source=label or Path(path).name
+    def load_files(self, files):
+        combined={}; names=[]
+        for path,label in files:
+            book=self.read_file(path); names.append(label)
+            for sheet,df in book.items():
+                key=str(sheet)
+                if key in combined:
+                    combined[key]=pd.concat([combined[key],df],ignore_index=True,sort=False)
+                else:
+                    combined[key]=df.copy()
+        self.sheets=combined
+        self.source=f'{len(names)} files: '+', '.join(names[:4])+(' …' if len(names)>4 else '')
+        return list(combined)
+
     def sheet(self,*names):
         for n in names:
             for k,v in self.sheets.items():
@@ -142,16 +159,34 @@ def chat():
     return jsonify(answer=ans,department=dept,mode=mode,steps=steps,active=active,llm=used,source=engine.source)
 @app.post('/api/upload')
 def upload():
-    f=request.files.get('file')
-    if not f:return jsonify(error='No file'),400
-    ext=Path(f.filename).suffix.lower()
-    if ext not in ('.xlsx','.xls','.csv'): return jsonify(error='Use XLSX, XLS or CSV'),400
-    with tempfile.NamedTemporaryFile(suffix=ext,delete=False) as t: f.save(t.name); p=t.name
-    try: engine.load_file(p,f.filename); return jsonify(ok=True,source=engine.source,sheets=list(engine.sheets))
-    except Exception as e:return jsonify(error=str(e)),400
+    incoming=request.files.getlist('files') or request.files.getlist('file')
+    incoming=[f for f in incoming if f and f.filename]
+    if not incoming:return jsonify(error='No files selected'),400
+    if len(incoming)>30:return jsonify(error='Maximum 30 files per upload'),400
+    saved=[]
+    try:
+        for f in incoming:
+            ext=Path(f.filename).suffix.lower()
+            if ext not in ('.xlsx','.xls','.csv'):
+                return jsonify(error=f'{f.filename}: use XLSX, XLS or CSV'),400
+            t=tempfile.NamedTemporaryFile(suffix=ext,delete=False); t.close(); f.save(t.name)
+            saved.append((t.name,f.filename))
+        sheets=engine.load_files(saved)
+        return jsonify(ok=True,source=engine.source,sheets=sheets,file_count=len(saved))
+    except Exception as e:
+        return jsonify(error=str(e)),400
     finally:
-        try:os.unlink(p)
-        except:pass
+        for p,_ in saved:
+            try: os.unlink(p)
+            except: pass
+
+@app.errorhandler(Exception)
+def json_error(e):
+    app.logger.exception('Unhandled application error')
+    if request.path.startswith('/api/'):
+        return jsonify(error=f'Server error: {type(e).__name__}: {e}'),500
+    raise e
+
 @app.get('/api/status')
 def status():
     return jsonify(source=engine.source,llm_configured=bool(os.getenv('LLM_API_URL') and os.getenv('LLM_API_KEY') and os.getenv('LLM_MODEL')),gdrive_configured=bool(os.getenv('GDRIVE_FOLDER_ID')))
